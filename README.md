@@ -35,7 +35,7 @@ The database is implemented **exclusively using Microsoft SQL Server**.
 | Field    | Value                        |
 | -------- | ---------------------------- |
 | Server   | `DESKTOP-H3K96NF\SQLEXPRESS` |
-| Username | `sa`                         |
+| Username | `crewwwl`                    |
 | Password | `Ansar0102`                  |
 
 ---
