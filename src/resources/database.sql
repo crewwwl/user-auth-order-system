@@ -1,5 +1,4 @@
 -- Car Marketplace Database Schema
--- SQLite Database for Car Marketplace Platform
 
 -- Create Cars Table
 CREATE TABLE IF NOT EXISTS cars (
