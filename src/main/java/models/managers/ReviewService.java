@@ -1,168 +1,128 @@
-package managers;
+package models.managers;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
 
 import models.Review;
-import java.util.*;
-import java.sql.*;
 
 public class ReviewService {
-    private Connection connection;
-    
-    public ReviewService(Connection connection) {
-        this.connection = connection;
+    private final Connection conn;
+
+    public ReviewService(Connection conn) {
+        this.conn = conn;
     }
-    
-    public boolean addReview(Review review) {
-        String sql = "INSERT INTO reviews (user_id, seller_id, car_id, rating, title, comment) VALUES (?, ?, ?, ?, ?, ?)";
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            stmt.setInt(1, review.getUserId());
-            stmt.setInt(2, review.getSellerId());
-            if (review.getCarId() != null) {
-                stmt.setInt(3, review.getCarId());
-            } else {
-                stmt.setNull(3, Types.INTEGER);
-            }
-            stmt.setInt(4, review.getRating());
-            stmt.setString(5, review.getTitle());
-            stmt.setString(6, review.getComment());
-            
-            int result = stmt.executeUpdate();
-            
-            if (result > 0) {
-                ResultSet keys = stmt.getGeneratedKeys();
-                if (keys.next()) {
-                    review.setReviewId(keys.getInt(1));
-                }
-                return true;
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при добавлении отзыва: " + e.getMessage());
-        }
+
+   public boolean addReview(Review review) {
+    try {
+        String sql = "INSERT INTO reviews (user_id, seller_id, car_id, rating, title, comment, date_created, is_approved) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, review.getUserId());
+        stmt.setInt(2, review.getSellerId());
+        if (review.getCarId() == null) stmt.setNull(3, Types.INTEGER);
+        else stmt.setInt(3, review.getCarId());
+        stmt.setInt(4, review.getRating());
+        stmt.setString(5, review.getTitle());
+        stmt.setString(6, review.getComment());
+        stmt.setTimestamp(7, Timestamp.valueOf(review.getDateCreated()));
+        stmt.setBoolean(8, review.isApproved());
+
+        return stmt.executeUpdate() > 0;
+    } catch (Exception e) {
+        e.printStackTrace();
         return false;
     }
-    
-    
-    public List<Review> getReviewsBySeller(int sellerId, boolean onlyApproved) {
-        List<Review> reviews = new ArrayList<>();
-        String sql = "SELECT * FROM reviews WHERE seller_id = ?";
-        if (onlyApproved) {
-            sql += " AND is_approved = TRUE";
+}
+
+public List<Review> getReviewsByUser(int userId) {
+    List<Review> reviews = new ArrayList<>();
+    try {
+        String sql = "SELECT * FROM reviews WHERE user_id = ?";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setInt(1, userId);
+        ResultSet rs = stmt.executeQuery();
+
+        while (rs.next()) {
+            Review review = new Review();
+            review.setReviewId(rs.getInt("review_id"));
+            review.setUserId(rs.getInt("user_id"));
+            review.setSellerId(rs.getInt("seller_id"));
+            review.setCarId(rs.getObject("car_id", Integer.class));
+            review.setRating(rs.getInt("rating"));
+            review.setTitle(rs.getString("title"));
+            review.setComment(rs.getString("comment"));
+            review.setDateCreated(rs.getTimestamp("date_created").toLocalDateTime());
+            review.setApproved(rs.getBoolean("is_approved"));
+            reviews.add(review);
         }
-        sql += " ORDER BY date_created DESC";
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    return reviews;
+}
+
+
+    public List<Review> getReviewsBySeller(int sellerId, boolean approved) {
+        List<Review> reviews = new ArrayList<>();
+        try {
+            String sql = "SELECT * FROM reviews WHERE sellerId = ? AND approved = ?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, sellerId);
+            stmt.setBoolean(2, approved);
             ResultSet rs = stmt.executeQuery();
-            
+
             while (rs.next()) {
-                Review review = mapResultSetToReview(rs);
+                Review review = new Review();
+                review.setReviewId(rs.getInt("id"));
+                review.setUserId(rs.getInt("userId"));
+                review.setSellerId(rs.getInt("sellerId"));
+                review.setCarId(rs.getObject("carId", Integer.class));
+                review.setRating(rs.getInt("rating"));
+                review.setTitle(rs.getString("title"));
+                review.setComment(rs.getString("comment"));
+                review.setDateCreated(rs.getTimestamp("dateCreated").toLocalDateTime());
+                review.setApproved(rs.getBoolean("approved"));
                 reviews.add(review);
             }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при получении отзывов: " + e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return reviews;
     }
-    
-    public List<Review> getReviewsByUser(int userId) {
-        List<Review> reviews = new ArrayList<>();
-        String sql = "SELECT * FROM reviews WHERE user_id = ? ORDER BY date_created DESC";
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setInt(1, userId);
-            ResultSet rs = stmt.executeQuery();
-            
-            while (rs.next()) {
-                Review review = mapResultSetToReview(rs);
-                reviews.add(review);
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при получении отзывов пользователя: " + e.getMessage());
-        }
-        return reviews;
-    }
-    
-    
-    public boolean approveReview(int reviewId) {
-        String sql = "UPDATE reviews SET is_approved = TRUE WHERE review_id = ?";
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setInt(1, reviewId);
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            System.err.println("Ошибка при одобрении отзыва: " + e.getMessage());
-        }
-        return false;
-    }
-    
-    
-    public boolean deleteReview(int reviewId) {
-        String sql = "DELETE FROM reviews WHERE review_id = ?";
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setInt(1, reviewId);
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            System.err.println("Ошибка при удалении отзыва: " + e.getMessage());
-        }
-        return false;
-    }
-    
-    
+
     public double getAverageRating(int sellerId) {
-        String sql = "SELECT AVG(rating) FROM reviews WHERE seller_id = ? AND is_approved = TRUE";
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try {
+            String sql = "SELECT AVG(rating) AS avg_rating FROM reviews WHERE sellerId = ? AND approved = 1";
+            PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, sellerId);
             ResultSet rs = stmt.executeQuery();
-            
             if (rs.next()) {
-                return rs.getDouble(1);
+                return rs.getDouble("avg_rating");
             }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при вычислении рейтинга: " + e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return 0.0;
     }
-    
-    
-    public int getReviewCount(int sellerId, boolean onlyApproved) {
-        String sql = "SELECT COUNT(*) FROM reviews WHERE seller_id = ?";
-        if (onlyApproved) {
-            sql += " AND is_approved = TRUE";
-        }
-        
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+    public int getReviewCount(int sellerId, boolean approved) {
+        try {
+            String sql = "SELECT COUNT(*) AS count FROM reviews WHERE sellerId = ? AND approved = ?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, sellerId);
+            stmt.setBoolean(2, approved);
             ResultSet rs = stmt.executeQuery();
-            
             if (rs.next()) {
-                return rs.getInt(1);
+                return rs.getInt("count");
             }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при подсчете отзывов: " + e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return 0;
-    }
-    
-    
-    private Review mapResultSetToReview(ResultSet rs) throws SQLException {
-        Review review = new Review();
-        review.setReviewId(rs.getInt("review_id"));
-        review.setUserId(rs.getInt("user_id"));
-        review.setSellerId(rs.getInt("seller_id"));
-        
-        int carId = rs.getInt("car_id");
-        if (!rs.wasNull()) {
-            review.setCarId(carId);
-        }
-        
-        review.setRating(rs.getInt("rating"));
-        review.setTitle(rs.getString("title"));
-        review.setComment(rs.getString("comment"));
-        review.setDateCreated(rs.getTimestamp("date_created").toLocalDateTime());
-        review.setApproved(rs.getBoolean("is_approved"));
-        
-        return review;
     }
 }
